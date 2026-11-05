@@ -1660,7 +1660,11 @@ function validateWorkingText(fname, text) {
 let patchApplyBusy = false;
 
 async function commitPatchTransaction(plans) {
-  // 写入前再次读取所有文件，避免覆盖预检期间发生的外部修改。
+  if (!Array.isArray(plans) || !plans.length) {
+    throw new Error('事务没有可提交的文件计划。');
+  }
+
+  // 第一轮：所有文件统一复核，任何一个变化都不开始写入。
   for (const plan of plans) {
     const latest = await readFileByPath(plan.fname);
     if (latest.text !== plan.original) {
@@ -1671,8 +1675,16 @@ async function commitPatchTransaction(plans) {
   const attempted = [];
   try {
     for (const plan of plans) {
+      // 第二轮：每个文件轮到提交时再次核对，缩短外部修改的竞争窗口。
+      const latest = await readFileByPath(plan.fname);
+      if (latest.text !== plan.original) {
+        throw new Error(`文件即将写入时检测到外部修改：${plan.fname}。已停止后续提交。`);
+      }
+
+      // 放入 attempted 后才开始写入；写入或 close 失败也会进入恢复流程。
       attempted.push(plan);
       await writeFileByHandle(plan.fileHandle, plan.working);
+
       const verify = await readFileByPath(plan.fname);
       if (verify.text !== plan.working) {
         throw new Error(`写入后校验不一致：${plan.fname}`);
@@ -1689,12 +1701,13 @@ async function commitPatchTransaction(plans) {
           throw new Error('恢复后内容校验不一致');
         }
       } catch (restoreError) {
-        rollbackErrors.push(plan.fname + '：' + restoreError.message);
+        rollbackErrors.push(plan.fname + '：' + (restoreError.message || String(restoreError)));
       }
     }
+
     const detail = rollbackErrors.length
-      ? '\n⚠️ 自动恢复未能全部完成，请立即检查：\n' + rollbackErrors.join('\n')
-      : '\n✅ 已自动恢复本次事务中已尝试写入的文件。';
+      ? '\n⚠️ 自动恢复未能全部完成，请立即检查以下文件：\n' + rollbackErrors.join('\n')
+      : '\n✅ 已尝试恢复本次事务中所有已开始写入的文件。';
     throw new Error((error.message || String(error)) + detail);
   }
 }
@@ -1761,25 +1774,16 @@ document.getElementById('btnApply').addEventListener('click', async () => {
       setStatus('🧪 正在预检：' + fname, 'info');
       const fileData = await readFileByPath(fname);
       const original = fileData.text;
-      let working = original;
-      const fileReport = [];
-      let applied = 0;
-      let failed = 0;
-
-      for (let i = 0; i < byFile[fname].length; i++) {
-        const result = applyOnePatchToString(working, byFile[fname][i], i + 1);
-        fileReport.push(result.report);
-        if (result.ok) {
-          working = result.working;
-          applied++;
-        } else {
-          failed++;
-        }
+      const batchResult = applyPatchBatchToString(original, byFile[fname]);
+      const fileReport = batchResult.reports;
+      if (!batchResult.ok) {
+        report.push(`❌ ${fname}：批次预检失败。\n${fileReport.join('\n')}`);
+        throw new Error('补丁批次定位或冲突检查失败。所有文件均未写入。\n' + report.join('\n\n'));
       }
-
-      if (failed || !applied) {
-        report.push(`❌ ${fname}：预检失败，${applied} 条成功，${failed} 条失败。\n${fileReport.join('\n')}`);
-        throw new Error('补丁预检失败。为避免部分修改，所有文件均未写入。\n' + report.join('\n\n'));
+      const working = batchResult.working;
+      const applied = byFile[fname].length;
+      if (!applied) {
+        throw new Error(`${fname} 没有可执行的补丁。`);
       }
 
       const issues = validateWorkingText(fname, working);
