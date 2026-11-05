@@ -1,0 +1,1864 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 补丁应用器 · 智能版 V4</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f1117; color: #e1e4e8; min-height: 100vh; padding: 20px;
+  }
+  .wrap { max-width: 1150px; margin: 0 auto; }
+  h1 { font-size: 20px; color: #ff2442; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: #8b949e; margin-bottom: 18px; line-height: 1.6; }
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  .card h2 { font-size: 14px; color: #58a6ff; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  button {
+    background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+    padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+    transition: all .15s; display: inline-flex; align-items: center; gap: 6px;
+  }
+  button:hover { background: #30363d; color: #fff; }
+  button.primary { background: #ff2442; border-color: #ff2442; color: #fff; }
+  button.primary:hover { background: #e01e3b; }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  textarea {
+    width: 100%; background: #0d1117; border: 1px solid #30363d; color: #c9d1d9;
+    padding: 10px; border-radius: 6px; font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px; resize: vertical; line-height: 1.5; outline: none;
+  }
+  textarea:focus { border-color: #ff2442; }
+  label.fld { display: block; font-size: 11px; color: #8b949e; margin-bottom: 4px; }
+  .status { font-size: 12px; padding: 10px; border-radius: 6px; margin-top: 10px; line-height: 1.7; white-space: pre-wrap; }
+  .status.ok { background: rgba(35,134,54,.15); color: #7ee787; border: 1px solid #238636; }
+  .status.err { background: rgba(248,81,73,.12); color: #f85149; border: 1px solid #f85149; }
+  .status.info { background: rgba(56,139,253,.12); color: #58a6ff; border: 1px solid #1f6feb; }
+  .status.warn { background: rgba(210,153,34,.12); color: #d29922; border: 1px solid #9e6a03; }
+  .file-info { font-size: 12px; color: #8b949e; }
+  .file-info b { color: #e1e4e8; }
+  .diff-view {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 10px; font-family: monospace; font-size: 11.5px; line-height: 1.5;
+    max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  .diff-view .del { background: rgba(248,81,73,.18); color: #ffa198; display: block; }
+  .diff-view .add { background: rgba(63,185,80,.18); color: #7ee787; display: block; }
+  .diff-view .eq { color: #6e7681; display: block; }
+  .hint { font-size: 11px; color: #6e7681; line-height: 1.6; margin-top: 6px; }
+  .chip {
+    display: inline-block; background: #21262d; border: 1px solid #30363d;
+    border-radius: 4px; padding: 2px 8px; font-size: 11px; margin: 2px 4px 2px 0;
+    font-family: monospace; color: #ffa657;
+  }
+  .patch-item {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 10px; margin-bottom: 8px; font-size: 12px;
+  }
+  .patch-item .desc { color: #58a6ff; font-weight: bold; margin-bottom: 4px; }
+  .patch-item .pair { display: flex; gap: 8px; font-family: monospace; font-size: 11px; line-height: 1.5; }
+  .patch-item .pair pre {
+    flex: 1; background: #161b22; padding: 6px; border-radius: 4px;
+    white-space: pre-wrap; word-break: break-all; max-height: 100px; overflow: auto;
+    border-left: 3px solid;
+  }
+  .patch-item .pair pre.old { border-color: #f85149; color: #ffa198; }
+  .patch-item .pair pre.new { border-color: #3fb950; color: #7ee787; }
+  .patch-item .pair .lbl { font-size: 10px; color: #6e7681; margin-bottom: 2px; }
+  .prompt-select {
+    background: #0d1117; border: 1px solid #30363d; color: #c9d1d9;
+    padding: 8px 10px; border-radius: 6px; font-size: 13px; outline: none; cursor: pointer;
+  }
+  #promptPreview { background: #0d1117; color: #7ee787; }
+
+  /* ===== 版本轨道 ===== */
+  .rail-scroll {
+    overflow-x: auto; overflow-y: hidden; padding: 28px 8px 12px;
+    scrollbar-width: thin; scrollbar-color: #484f58 transparent;
+  }
+  .rail-scroll::-webkit-scrollbar { height: 6px; }
+  .rail-scroll::-webkit-scrollbar-thumb { background: #484f58; border-radius: 3px; }
+
+  .rail {
+    position: relative; display: flex; align-items: flex-start;
+    gap: 0; min-width: max-content; padding: 0 20px;
+  }
+  .rail::before {
+    content: ''; position: absolute; left: 20px; right: 20px; top: 9px;
+    height: 3px; background: #30363d; border-radius: 2px;
+  }
+
+  .rail-node {
+    position: relative; display: flex; flex-direction: column;
+    align-items: center; width: 110px; flex-shrink: 0;
+    cursor: pointer; user-select: none;
+  }
+  .rail-dot {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #58a6ff; border: 3px solid #0f1117;
+    box-shadow: 0 0 0 2px #58a6ff44; z-index: 2;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .rail-node:hover .rail-dot {
+    transform: scale(1.25); box-shadow: 0 0 0 4px #58a6ff55;
+  }
+  .rail-node.latest .rail-dot {
+    background: #ff2442; box-shadow: 0 0 0 2px #ff244244;
+  }
+  .rail-node.latest:hover .rail-dot {
+    box-shadow: 0 0 0 4px #ff244255;
+  }
+  .rail-time {
+    margin-top: 6px; font-size: 11px; font-family: monospace;
+    color: #58a6ff; font-weight: bold; white-space: nowrap;
+  }
+  .rail-node.latest .rail-time { color: #ff2442; }
+  .rail-summary {
+    margin-top: 2px; font-size: 10px; color: #8b949e;
+    text-align: center; line-height: 1.3; max-width: 104px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .rail-note {
+    margin-top: 3px; font-size: 10px; color: #d29922;
+    text-align: center; line-height: 1.3; max-width: 104px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tl-empty { color: #6e7681; font-size: 12px; padding: 10px 0; }
+
+  /* 节点操作菜单 */
+  .node-menu {
+    position: fixed; z-index: 9999; background: #161b22;
+    border: 1px solid #30363d; border-radius: 8px; padding: 4px 0;
+    box-shadow: 0 8px 24px rgba(0,0,0,.8); min-width: 150px;
+  }
+  .node-menu button {
+    display: flex; width: 100%; justify-content: flex-start;
+    padding: 7px 14px; font-size: 12px; border: none; border-radius: 0;
+    background: transparent; color: #c9d1d9;
+  }
+  .node-menu button:hover { background: #30363d; color: #fff; }
+  .node-menu button.danger { color: #f85149; }
+
+  /* 备注编辑弹层 */
+  .modal-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,.65);
+    display: flex; align-items: center; justify-content: center; z-index: 9999;
+  }
+  .modal-box {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    width: 460px; max-width: 92vw; padding: 18px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.8);
+  }
+  .modal-box h3 { font-size: 14px; color: #58a6ff; margin-bottom: 10px; }
+  .modal-box .meta { font-size: 11px; color: #8b949e; margin-bottom: 10px; line-height: 1.6; }
+  .modal-box textarea { min-height: 80px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+  /* ===== 候选变体 ===== */
+  .variant-group {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    padding: 10px; margin-bottom: 10px;
+  }
+  .variant-group .vg-title {
+    font-size: 12px; color: #58a6ff; font-weight: bold; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .variant-tabs { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+  .variant-tab {
+    background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+    padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
+    transition: all .15s; user-select: none;
+  }
+  .variant-tab:hover { background: #30363d; }
+  .variant-tab.active {
+    background: #ff2442; border-color: #ff2442; color: #fff; font-weight: bold;
+  }
+  .variant-tab .v-id {
+    display: inline-block; padding: 0 4px; margin-right: 4px;
+    background: rgba(255,255,255,0.15); border-radius: 2px; font-family: monospace;
+  }
+  .variant-tab.active .v-id { background: rgba(0,0,0,0.25); }
+  .variant-body { display: none; }
+  .variant-body.active { display: block; }
+
+  /* 代码查看器 modal */
+  .file-viewer-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    display: flex; align-items: center; justify-content: center; z-index: 10000;
+  }
+  .file-viewer-box {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    width: 90vw; max-width: 1000px; max-height: 88vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 20px 50px rgba(0,0,0,.8);
+  }
+  .file-viewer-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-bottom: 1px solid #30363d;
+  }
+  .file-viewer-header h3 { font-size: 13px; color: #58a6ff; margin: 0; }
+  .file-viewer-body {
+    flex: 1; overflow: auto; padding: 12px 16px;
+  }
+  .file-viewer-body textarea {
+    width: 100%; height: 100%; min-height: 500px; font-size: 11.5px;
+  }
+  .file-viewer-actions { display: flex; gap: 6px; align-items: center; }
+  .file-viewer-info { font-size: 11px; color: #8b949e; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🩹 AI 补丁应用器 · 智能识别版 V4</h1>
+  <p class="sub">
+    整段粘贴 AI 回答，工具自动识别 <b>文件名</b>、<b>JSON 补丁</b>、<b>多候选变体</b>，
+    支持<b>一键导出真实文件全文给 AI</b>。仅支持 Chrome / Edge。
+  </p>
+
+  <!-- 提示词模板 -->
+  <div class="card">
+    <h2>🎯 给 AI 的提示词（点一下复制，粘给 AI 即可）</h2>
+    <div class="row">
+      <select id="promptScene" class="prompt-select">
+        <option value="patch-multi">标准补丁（多文件 / 最常用）</option>
+        <option value="patch-single">单文件补丁</option>
+        <option value="patch-explain">先解释再补丁（谨慎修改）</option>
+        <option value="patch-minimal">极简版（只要 JSON）</option>
+        <option value="patch-anchor">锚点补丁（推荐 · 不依赖缩进换行）</option>
+        <option value="patch-variants">多候选变体（推荐 · 一次试多个方案）</option>
+        <option value="patch-anchor-variants">锚点 + 多候选（最强 · 一次试多个锚点方案）</option>
+      </select>
+      <button id="btnCopyPrompt" class="primary">📋 复制提示词</button>
+      <span id="copyHint" class="hint" style="margin:0;"></span>
+    </div>
+    <textarea id="promptPreview" rows="16" readonly style="margin-top:10px;"></textarea>
+    <p class="hint">
+      💡 复制后粘给 AI，AI 就会按这个 JSON 格式回答。你再把 AI 的回答整段粘到下面「②」里，工具自动识别并应用。
+    </p>
+  </div>
+
+  <!-- 第一步：选文件夹（一次） -->
+  <div class="card">
+    <h2>① 授权项目文件夹（只需一次）</h2>
+    <div class="row">
+      <button id="btnPickDir" class="primary">📁 选择项目根目录</button>
+      <span id="dirInfo" class="file-info">未选择目录</span>
+    </div>
+    <p class="hint">
+      选中你项目的根目录（含 index.html 那一层）。浏览器会记住，下次打开无需重选。
+      工具只会读取匹配到的那个文件，不会扫描全部。
+    </p>
+    <div class="row" style="margin-top:8px;">
+      <button id="btnExportFile" class="ghost">📤 导出真实文件全文给 AI</button>
+      <span id="exportFileHint" class="hint" style="margin:0;"></span>
+    </div>
+    <p class="hint">
+      点一下「导出真实文件全文给 AI」，选择要查看的文件，工具会读磁盘上的<b>真实最新内容</b>并显示在弹窗里，
+      你可以一键复制粘给 AI，从此再也不会出现「AI 手上的代码和磁盘不同步 → 找不到旧代码」。
+    </p>
+  </div>
+
+  <!-- 第二步：粘贴 AI 回答 -->
+  <div class="card">
+    <h2>② 粘贴 AI 的完整回答</h2>
+    <label class="fld">任意格式都行 —— 只要包含文件名和 JSON 补丁（支持 variants 多候选）</label>
+    <textarea id="rawInput" rows="14" placeholder="把 AI 给你的整段回答（含说明文字、代码块、JSON）直接粘贴到这里。
+
+工具会自动识别：
+  • 文件名：index.html / js/app.js / style.css ...
+  • 补丁：{ &quot;patches&quot;: [ { &quot;find&quot;: &quot;...&quot;, &quot;replace&quot;: &quot;...&quot; } ] }
+  • 锚点补丁：{ &quot;patches&quot;: [ { &quot;anchor_before&quot;: &quot;...&quot;, &quot;anchor_after&quot;: &quot;...&quot;, &quot;replace_whole&quot;: &quot;...&quot; } ] }
+  • 多候选变体：{ &quot;patches&quot;: [ { &quot;file&quot;: &quot;...&quot;, &quot;variants&quot;: [ { &quot;id&quot;: &quot;A&quot;, ... }, { &quot;id&quot;: &quot;B&quot;, ... } ] } ] }"></textarea>
+    <div class="row" style="margin-top:10px;">
+      <button id="btnParse" class="primary">🔍 解析并预览</button>
+      <button id="btnClear" class="ghost">清空</button>
+    </div>
+  </div>
+
+  <!-- 第三步：解析结果 -->
+  <div class="card" id="resultCard" style="display:none;">
+    <h2>③ 识别结果</h2>
+    <div id="recognizedFiles" style="margin-bottom:10px;"></div>
+    <div id="patchList"></div>
+    <div class="row" style="margin-top:12px;">
+      <button id="btnApply" class="primary" disabled>✅ 应用并保存</button>
+      <span id="applyHint" class="hint" style="margin:0;"></span>
+    </div>
+  </div>
+
+  <!-- 结果状态 -->
+  <div class="card">
+    <h2>④ 执行状态</h2>
+    <div id="status" class="status info">等待操作…</div>
+    <div id="diff" class="diff-view" style="display:none; margin-top:10px;"></div>
+  </div>
+
+  <!-- 版本轨道 -->
+  <div class="card">
+    <h2>⑤ 版本轨道（点击节点恢复）</h2>
+    <p class="hint" style="margin-top:0; margin-bottom:12px;">
+      每个圆点是一个版本节点。点击节点可回到该版本、写备注或查看差异。历史不删除，可来回跳转。
+    </p>
+    <div class="rail-scroll">
+      <div id="timelineRail" class="rail"></div>
+    </div>
+    <div id="railEmpty" class="tl-empty" style="display:none;">暂无历史节点。应用并保存后会出现。</div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   全局
+   ============================================================ */
+let dirHandle = null;
+// 每项：
+//   { file, desc, find, replace }
+//   { file, desc, anchor_before, anchor_after, replace_whole }
+//   { file, desc, variants: [ { id, desc, find?, replace?, anchor_before?, anchor_after?, replace_whole? } ], chosenId? }
+let parsedPatches = [];
+const TIMELINE_KEY = 'patcher_timeline_v1';
+let timeline = [];               // [{ id, time, timestamp, autoSummary, note, files:[], before:{fname:text} }]
+
+/* ============================================================
+   基础工具
+   ============================================================ */
+function setStatus(msg, type = 'info') {
+  const el = document.getElementById('status');
+  el.className = 'status ' + type;
+  el.textContent = msg;
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function countOccurrences(hay, needle) {
+  if (!needle) return 0;
+  let n = 0, idx = 0;
+  while ((idx = hay.indexOf(needle, idx)) !== -1) { n++; idx += needle.length; }
+  return n;
+}
+function showDiff(html) {
+  const d = document.getElementById('diff');
+  d.innerHTML = html;
+  d.style.display = 'block';
+}
+function hideDiff() {
+  document.getElementById('diff').style.display = 'none';
+  document.getElementById('diff').innerHTML = '';
+}
+function showLineDiff(before, after) {
+  const a = before.split('\n');
+  const b = after.split('\n');
+  let firstDiff = -1;
+  const max = Math.max(a.length, b.length);
+  for (let i = 0; i < max; i++) {
+    if (a[i] !== b[i]) { firstDiff = i; break; }
+  }
+  if (firstDiff === -1) {
+    showDiff('<span class="eq">（内容没有变化）</span>');
+    return;
+  }
+  const start = Math.max(0, firstDiff - 3);
+  const out = [];
+  for (let i = start; i < Math.min(max, firstDiff + 40); i++) {
+    if (a[i] === b[i]) {
+      out.push(`<span class="eq">  ${escHtml(a[i] ?? '')}</span>`);
+    } else {
+      if (a[i] !== undefined) out.push(`<span class="del">- ${escHtml(a[i])}</span>`);
+      if (b[i] !== undefined) out.push(`<span class="add">+ ${escHtml(b[i])}</span>`);
+    }
+  }
+  showDiff(out.join(''));
+}
+
+/* ============================================================
+   时间线：加载 / 保存 / 渲染
+   ============================================================ */
+function loadTimeline() {
+  try { timeline = JSON.parse(localStorage.getItem(TIMELINE_KEY) || '[]'); }
+  catch (e) { timeline = []; }
+  if (!Array.isArray(timeline)) timeline = [];
+  renderTimeline();
+}
+function saveTimeline() {
+  timeline = timeline.slice(0, 60);
+  try {
+    localStorage.setItem(TIMELINE_KEY, JSON.stringify(timeline));
+  } catch (e) {
+    while (timeline.length > 1) {
+      timeline.pop();
+      try {
+        localStorage.setItem(TIMELINE_KEY, JSON.stringify(timeline));
+        break;
+      } catch (e2) {}
+    }
+    if (timeline.length === 0) {
+      setStatus('⚠️ 本地存储已满，历史记录无法保存。请手动清理浏览器数据。', 'warn');
+    }
+  }
+  renderTimeline();
+}
+
+function renderTimeline() {
+  const rail = document.getElementById('timelineRail');
+  const empty = document.getElementById('railEmpty');
+  if (!rail || !empty) return;
+
+  if (timeline.length === 0) {
+    rail.innerHTML = '';
+    empty.style.display = 'block';
+    rail.parentElement.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  rail.parentElement.style.display = 'block';
+  rail.innerHTML = '';
+
+  timeline.forEach((node, i) => {
+    const div = document.createElement('div');
+    div.className = 'rail-node' + (i === 0 ? ' latest' : '');
+    div.dataset.idx = i;
+
+    const dot = document.createElement('div');
+    dot.className = 'rail-dot';
+    div.appendChild(dot);
+
+    const time = document.createElement('div');
+    time.className = 'rail-time';
+    time.textContent = node.time;
+    div.appendChild(time);
+
+    if (node.autoSummary) {
+      const sum = document.createElement('div');
+      sum.className = 'rail-summary';
+      sum.textContent = node.autoSummary;
+      sum.title = node.autoSummary;
+      div.appendChild(sum);
+    }
+
+    if (node.note) {
+      const note = document.createElement('div');
+      note.className = 'rail-note';
+      note.textContent = '📝 ' + node.note;
+      note.title = node.note;
+      div.appendChild(note);
+    }
+
+    div.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showNodeMenu(div, i);
+    });
+
+    rail.appendChild(div);
+  });
+
+  const scroller = rail.parentElement;
+  if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+}
+
+function showNodeMenu(anchorEl, idx) {
+  document.querySelectorAll('.node-menu').forEach(m => m.remove());
+  const node = timeline[idx];
+  if (!node) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'node-menu';
+  menu.innerHTML = `
+    <button data-act="rollback">↩️ 回到此版本</button>
+    <button data-act="note">✏️ 写备注</button>
+    <button data-act="diff">🔍 查看差异</button>
+    <button data-act="delete" class="danger">🗑️ 删除节点</button>
+  `;
+  document.body.appendChild(menu);
+
+  const rect = anchorEl.getBoundingClientRect();
+  let x = rect.left + rect.width / 2 - 75;
+  let y = rect.bottom + 6;
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  if (x + mw > window.innerWidth - 8) x = window.innerWidth - mw - 8;
+  if (x < 8) x = 8;
+  if (y + mh > window.innerHeight - 8) y = rect.top - mh - 6;
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+
+  menu.querySelectorAll('button[data-act]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.remove();
+      const act = btn.dataset.act;
+      if (act === 'rollback') rollbackToNode(idx);
+      else if (act === 'note') openNoteModal(idx);
+      else if (act === 'diff') showNodeDiff(idx);
+      else if (act === 'delete') deleteNode(idx);
+    });
+  });
+
+  setTimeout(() => {
+    const close = (e) => {
+      if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }
+    };
+    document.addEventListener('click', close);
+  }, 0);
+}
+
+/* ============================================================
+   备注弹窗
+   ============================================================ */
+function openNoteModal(idx) {
+  const node = timeline[idx];
+  if (!node) return;
+
+  const mask = document.createElement('div');
+  mask.className = 'modal-mask';
+  mask.innerHTML = `
+    <div class="modal-box">
+      <h3>✏️ 给 ${escHtml(node.time)} 的节点写备注</h3>
+      <div class="meta">
+        自动摘要：${escHtml(node.autoSummary || '无')}<br>
+        涉及文件：${escHtml((node.files || []).join('、'))}
+      </div>
+      <label class="fld">备注内容（留空则删除备注）</label>
+      <textarea id="noteInput" placeholder="例如：删掉上移下移按钮，加了建组按钮"></textarea>
+      <div class="modal-actions">
+        <button class="ghost" id="noteCancel">取消</button>
+        <button class="primary" id="noteSave">保存备注</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(mask);
+  const ta = mask.querySelector('#noteInput');
+  ta.value = node.note || '';
+  setTimeout(() => ta.focus(), 50);
+
+  const close = () => mask.remove();
+  mask.querySelector('#noteCancel').addEventListener('click', close);
+  mask.querySelector('#noteSave').addEventListener('click', () => {
+    node.note = ta.value.trim();
+    saveTimeline();
+    close();
+    setStatus('✅ 备注已更新。', 'ok');
+  });
+  mask.addEventListener('click', (e) => { if (e.target === mask) close(); });
+}
+
+/* ============================================================
+   回滚到节点执行前
+   ============================================================ */
+async function rollbackToNode(idx) {
+  const node = timeline[idx];
+  if (!node) return;
+  if (!dirHandle) { setStatus('❌ 请先授权项目文件夹再回滚', 'err'); return; }
+  if (!node.before || Object.keys(node.before).length === 0) {
+    setStatus('❌ 这个节点没有保存文件快照，无法回滚。', 'err');
+    return;
+  }
+  const fileList = Object.keys(node.before).join('\n  ');
+  const ok = confirm(
+    `确定要回到 ${node.time} 这个版本吗？\n\n` +
+    `会把以下文件恢复成该节点执行前的状态：\n  ${fileList}\n\n` +
+    `历史节点会保留，你随时可以再回到后面的版本。`
+  );
+  if (!ok) return;
+
+  const report = [];
+  let restored = 0;
+  let failed = 0;
+  for (const fname of Object.keys(node.before)) {
+    try {
+      const { fileHandle } = await readFileByPath(fname);
+      await writeFileByHandle(fileHandle, node.before[fname]);
+      restored++;
+      report.push(`✅ ${fname}`);
+    } catch (e) {
+      failed++;
+      report.push(`❌ ${fname}：${e.message}`);
+    }
+  }
+  setStatus(
+    (failed === 0 ? '✅ ' : '⚠️ ') +
+    `已回滚到 ${node.time} 之前：成功 ${restored} 个文件，失败 ${failed} 个。\n\n` +
+    report.join('\n'),
+    failed === 0 ? 'ok' : 'warn'
+  );
+  hideDiff();
+}
+
+/* ============================================================
+   查看节点差异：对比 before vs 当前文件
+   ============================================================ */
+async function showNodeDiff(idx) {
+  const node = timeline[idx];
+  if (!node || !node.before) return;
+  if (!dirHandle) { setStatus('❌ 请先授权项目文件夹才能读取当前文件', 'err'); return; }
+  const fnames = Object.keys(node.before);
+  if (fnames.length === 0) return;
+
+  const fname = fnames[0];
+  try {
+    const { text: after } = await readFileByPath(fname);
+    const before = node.before[fname];
+    setStatus(`🔍 展示 ${node.time} 节点对 ${fname} 的改动（before → 当前）。`, 'info');
+    showLineDiff(before, after);
+  } catch (e) {
+    setStatus('❌ 读取当前文件失败：' + e.message, 'err');
+  }
+}
+
+/* ============================================================
+   删除节点
+   ============================================================ */
+function deleteNode(idx) {
+  const node = timeline[idx];
+  if (!node) return;
+  if (!confirm(`从时间线移除 ${node.time} 这个节点？\n（不会影响已写入的文件，只是删记录）`)) return;
+  timeline.splice(idx, 1);
+  saveTimeline();
+  setStatus('已从时间线移除该节点。', 'info');
+}
+
+/* ============================================================
+   提示词模板库
+   ============================================================ */
+const PROMPT_TEMPLATES = {
+  'patch-multi': `请按下面格式输出修改。如果需要改多个文件，就输出多条 patch。
+
+严格遵守：
+1. find 字段必须是文件里的【原始完整文本】，包含缩进、换行、空格，一字不差
+2. replace 字段是修改后的完整文本
+3. file 字段是文件相对路径（如 index.html、js/app.js）
+4. 只输出 JSON，不要加任何解释文字
+5. 如果涉及多文件，按文件分开，每条 patch 都写清 file
+
+输出格式：
+{
+  "patches": [
+    {
+      "file": "index.html",
+      "desc": "一句话说明这处改了什么",
+      "find": "改之前的完整原文（含缩进）",
+      "replace": "改之后的完整新代码"
+    },
+    {
+      "file": "js/text-layers.js",
+      "desc": "一句话说明这处改了什么",
+      "find": "改之前的完整原文（含缩进）",
+      "replace": "改之后的完整新代码"
+    }
+  ]
+}`,
+
+  'patch-single': `请按下面格式输出修改（只改一个文件）：
+
+{
+  "patches": [
+    {
+      "file": "要修改的文件名（如 index.html）",
+      "desc": "一句话说明改了什么",
+      "find": "改之前的完整原文（含缩进、换行，必须一字不差）",
+      "replace": "改之后的完整新代码"
+    }
+  ]
+}
+
+要求：
+- find 必须与文件原文完全一致（缩进、空格、换行都不能变）
+- 只输出 JSON，不要加解释`,
+
+  'patch-explain': `请分两步回答：
+
+第一步：用一两句话说明你要改哪个文件、改什么、为什么改。
+第二步：输出下面的 JSON（放在代码块里），工具会自动读取。
+
+{
+  "patches": [
+    {
+      "file": "要修改的文件名",
+      "desc": "一句话说明这处改了什么",
+      "find": "改之前的完整原文（含缩进，必须一字不差）",
+      "replace": "改之后的完整新代码"
+    }
+  ]
+}
+
+注意：find 必须与文件原文完全一致，缩进和换行都不能改。`,
+
+  'patch-minimal': `只输出 JSON，不要任何解释：
+
+{"patches":[{"file":"文件名","desc":"说明","find":"旧代码原文","replace":"新代码"}]}
+
+find 必须与文件原文完全一致（含缩进换行）。`,
+
+  'patch-anchor': `请用「锚点补丁」格式输出修改，不要输出完整的旧代码，只输出两段【唯一可识别】的短锚点和新代码。
+
+规则：
+1. anchor_before：这段旧代码【紧挨在要修改区域上方】的、能唯一确定位置的短片段（1 行即可，必要时 2 行）
+2. anchor_after：这段旧代码【紧挨在要修改区域下方】的、能唯一确定位置的短片段（1 行即可，必要时 2 行）
+3. replace_whole：把 anchor_before 和 anchor_after 之间的所有内容（含两端锚点）整体替换成的新代码
+4. 锚点必须真实存在于文件里，不要求含缩进，工具会自动忽略空白差异
+5. 锚点必须唯一：在文件中只出现一次（如果担心不唯一，可以写 2 行）
+6. 只输出 JSON，不要任何解释
+
+输出格式：
+{
+  "patches": [
+    {
+      "file": "js/app.js",
+      "desc": "一句话说明这处改了什么",
+      "anchor_before": "唯一上方锚点（1 行或 2 行）",
+      "anchor_after": "唯一下方锚点（1 行或 2 行）",
+      "replace_whole": "把两锚点之间的全部内容（含两个锚点本身）替换成这段新代码"
+    }
+  ]
+}
+
+注意：
+- anchor_before 和 anchor_after 会原样参与替换，所以 replace_whole 里必须把它们自己再写一遍。
+- 如果一次要改多个位置，就输出多条 patch，每条独立指定自己的锚点。`,
+
+  'patch-variants': `在输出之前，请先在你内部模拟一遍：
+1. 对每个候选方案，假想它的 find / anchor 在真实文件里是否能匹配
+2. 假想它应用后的代码是否会有语法错误
+3. 假想它是否会和其它候选冲突
+然后只输出 2~3 个最高概率的候选方案，用 variants 格式。
+
+请用「多候选变体」格式输出修改。每个要改的位置，请给出 2~3 个候选实现方案（variants），
+
+每个方案可以是 find/replace，也可以是锚点补丁（anchor_before / anchor_after / replace_whole）。
+
+遵守规则：
+1. 每个 patch 对应一个要修改的位置（一处改动一条 patch）
+2. variants 数组给 2~3 个候选方案，按【你最推荐】到【次推荐】排序
+3. 每个 variant 必须带一个短 id（A / B / C）
+4. 每个 variant 可以是：
+   - { "id":"A", "desc":"...", "find":"...", "replace":"..." }
+   - 或 { "id":"A", "desc":"...", "anchor_before":"...", "anchor_after":"...", "replace_whole":"..." }
+5. 只输出 JSON，不要任何解释
+
+输出格式：
+{
+  "patches": [
+    {
+      "file": "js/app.js",
+      "desc": "要修改哪一处（一句话）",
+      "variants": [
+        { "id": "A", "desc": "候选A一句话", "anchor_before": "...", "anchor_after": "...", "replace_whole": "..." },
+        { "id": "B", "desc": "候选B一句话", "find": "...", "replace": "..." },
+        { "id": "C", "desc": "候选C一句话", "anchor_before": "...", "anchor_after": "...", "replace_whole": "..." }
+      ]
+    }
+  ]
+}
+
+重要：
+- 如果这次改动你只有 1 个明确方案，也请拆成 2 个变体（一个保守、一个大改），让我能对比效果。
+- 每个 variant 内部字段类型必须一致（要么 find/replace，要么锚点补丁）。
+- 不要混用：一个 patch 的 variants 里不要一部分 find/replace 一部分锚点补丁；如果必须混用，请拆成不同 patch。`,
+
+  'patch-anchor-variants': `在输出之前，请先在你内部模拟一遍：
+1. 对每个候选方案，假想它的 anchor_before / anchor_after 在真实文件里是否能匹配（是否唯一、是否在正确位置）
+2. 假想它应用后的代码是否会有语法错误
+3. 假想它是否会和其它候选、其它 patch 冲突（例如两个 patch 修改同一区域）
+然后只输出 2~3 个最高概率的候选方案，用 variants 格式。
+
+请用「锚点 + 多候选」格式输出修改。每个要改的位置，请给出 2~3 个锚点候选方案（variants），
+
+全部用锚点补丁格式（anchor_before / anchor_after / replace_whole），不要用 find/replace。
+
+规则：
+1. 每个 patch 对应一个要修改的位置
+2. variants 数组给 2~3 个候选方案，按【你最推荐】到【次推荐】排序
+3. 每个 variant 必须带短 id（A / B / C）
+4. 每个 variant 必须包含 anchor_before / anchor_after / replace_whole
+5. anchor_before 是【紧挨在要修改区域上方】的唯一短片段（1 行，必要时 2 行）
+6. anchor_after 是【紧挨在要修改区域下方】的唯一短片段（1 行，必要时 2 行）
+7. replace_whole 是把两锚点之间的全部内容（含两个锚点本身）替换成的新代码
+8. 锚点必须真实存在于文件里，不要求含缩进；工具自动忽略空白差异
+9. 锚点必须唯一：文件中只出现一次（若担心不唯一，用 2 行）
+10. 只输出 JSON，不要任何解释
+
+输出格式：
+{
+  "patches": [
+    {
+      "file": "js/app.js",
+      "desc": "要修改哪一处（一句话）",
+      "variants": [
+        {
+          "id": "A",
+          "desc": "候选A一句话",
+          "anchor_before": "唯一上方锚点",
+          "anchor_after": "唯一下方锚点",
+          "replace_whole": "把两锚点之间全部内容（含两锚点）替换成这段新代码"
+        },
+        {
+          "id": "B",
+          "desc": "候选B一句话",
+          "anchor_before": "唯一上方锚点",
+          "anchor_after": "唯一下方锚点",
+          "replace_whole": "另一种实现"
+        },
+        {
+          "id": "C",
+          "desc": "候选C一句话",
+          "anchor_before": "唯一上方锚点",
+          "anchor_after": "唯一下方锚点",
+          "replace_whole": "第三种实现"
+        }
+      ]
+    }
+  ]
+}
+
+注意：
+- replace_whole 必须把 anchor_before 和 anchor_after 自己再写一遍（它们会原样参与替换）。
+- 如果一次要改多个位置，输出多条 patch，每条独立指定自己的锚点。
+- 即使你只有一个明确方案，也请拆成 2 个变体（一个保守、一个大改），让我能对比效果。`
+};
+
+function updatePromptPreview() {
+  const scene = document.getElementById('promptScene').value;
+  document.getElementById('promptPreview').value = PROMPT_TEMPLATES[scene] || '';
+}
+document.getElementById('promptScene').addEventListener('change', updatePromptPreview);
+updatePromptPreview();
+
+document.getElementById('btnCopyPrompt').addEventListener('click', async () => {
+  const text = document.getElementById('promptPreview').value;
+  const hint = document.getElementById('copyHint');
+  try {
+    await navigator.clipboard.writeText(text);
+    hint.textContent = '✅ 已复制到剪贴板';
+    hint.style.color = '#7ee787';
+    setTimeout(() => { hint.textContent = ''; }, 2000);
+  } catch (e) {
+    const ta = document.getElementById('promptPreview');
+    ta.focus();
+    ta.select();
+    hint.textContent = '⚠️ 自动复制失败，请按 Ctrl+C 复制已选中的内容';
+    hint.style.color = '#d29922';
+  }
+});
+
+/* ============================================================
+   ① 选择目录
+   ============================================================ */
+document.getElementById('btnPickDir').addEventListener('click', async () => {
+  try {
+    dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    document.getElementById('dirInfo').innerHTML = `已选目录：<b>${escHtml(dirHandle.name)}</b>`;
+    setStatus('目录已授权。现在粘贴 AI 回答，点「解析并预览」。', 'ok');
+  } catch (e) {
+    // 用户取消
+  }
+});
+
+/* ============================================================
+   ①-b 导出真实文件全文给 AI
+   ============================================================ */
+document.getElementById('btnExportFile').addEventListener('click', async () => {
+  if (!dirHandle) {
+    setStatus('❌ 请先授权项目文件夹', 'err');
+    return;
+  }
+  const pathStr = prompt(
+    '请输入要导出的文件相对路径（如 js/app.js）：',
+    'js/app.js'
+  );
+  if (!pathStr) return;
+  try {
+    const { text } = await readFileByPath(pathStr.trim());
+    openFileViewer(pathStr.trim(), text);
+  } catch (e) {
+    setStatus('❌ 读取文件失败：' + e.message, 'err');
+  }
+});
+
+function openFileViewer(pathStr, text) {
+  const mask = document.createElement('div');
+  mask.className = 'file-viewer-mask';
+  mask.innerHTML = `
+    <div class="file-viewer-box">
+      <div class="file-viewer-header">
+        <h3>📄 磁盘真实内容 · <span style="color:#7ee787;">${escHtml(pathStr)}</span></h3>
+        <div class="file-viewer-actions">
+          <span class="file-viewer-info" id="fv-info">${text.length} 字符</span>
+          <button id="fv-copy" class="primary" style="padding:6px 12px;font-size:12px;">📋 全选并复制</button>
+          <button id="fv-close" class="ghost" style="padding:6px 12px;font-size:12px;">关闭</button>
+        </div>
+      </div>
+      <div class="file-viewer-body">
+        <textarea id="fv-text" readonly></textarea>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(mask);
+  const ta = mask.querySelector('#fv-text');
+  ta.value = text;
+
+  mask.querySelector('#fv-close').addEventListener('click', () => mask.remove());
+  mask.addEventListener('click', (e) => { if (e.target === mask) mask.remove(); });
+  mask.querySelector('#fv-copy').addEventListener('click', async () => {
+    const btn = mask.querySelector('#fv-copy');
+    ta.focus();
+    ta.select();
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = '✅ 已复制';
+      setTimeout(() => { btn.innerHTML = '📋 全选并复制'; }, 1500);
+    } catch (e) {
+      try { document.execCommand('copy'); btn.textContent = '✅ 已复制'; setTimeout(() => { btn.innerHTML = '📋 全选并复制'; }, 1500); }
+      catch (e2) { btn.textContent = '⚠️ 请手动 Ctrl+C'; }
+    }
+  });
+}
+
+/* ============================================================
+   ② 解析 AI 回答
+   ============================================================ */
+function parseAIResponse(text) {
+  const result = { files: [], patches: [], warnings: [] };
+
+  // 识别文件名
+  const fileRe = /(?:^|[\s`'"(\[])((?:[\w\-.]+[\/\\])*[\w\-.]+\.(?:html|css|js|json|md|txt))(?:[\s`'")。，,：:]|$)/gi;
+  const fileSet = new Set();
+  let m;
+  while ((m = fileRe.exec(text)) !== null) {
+    let f = m[1].replace(/\\/g, '/');
+    if (f.length < 4) continue;
+    fileSet.add(f);
+  }
+  result.files = Array.from(fileSet);
+
+  // 识别 JSON 补丁（普通 / 锚点 / 多候选）
+  const candidates = extractJsonBlocks(text);
+  const jsonPatches = [];
+  candidates.forEach(block => {
+    try {
+      const data = JSON.parse(block);
+      const pushPatch = (p) => {
+        if (!p || typeof p !== 'object') return;
+
+        // 多候选变体
+        if (Array.isArray(p.variants) && p.variants.length > 0) {
+          const variants = [];
+          p.variants.forEach((v, vi) => {
+            if (!v || typeof v !== 'object') return;
+            const vid = String(v.id || String.fromCharCode(65 + vi));
+            const vdesc = v.desc || '';
+            const hasFindReplace = (typeof v.find === 'string' && typeof v.replace === 'string');
+            const hasAnchor = (typeof v.anchor_before === 'string' && typeof v.anchor_after === 'string' && typeof v.replace_whole === 'string');
+            if (hasFindReplace) {
+              variants.push({ id: vid, desc: vdesc, find: v.find, replace: v.replace });
+            } else if (hasAnchor) {
+              variants.push({ id: vid, desc: vdesc, anchor_before: v.anchor_before, anchor_after: v.anchor_after, replace_whole: v.replace_whole });
+            }
+          });
+          if (variants.length > 0) {
+            jsonPatches.push({
+              file: p.file || null,
+              desc: p.desc || '',
+              variants,
+              chosenId: variants[0].id
+            });
+          }
+          return;
+        }
+
+        // 单方案
+        const hasFindReplace = (typeof p.find === 'string' && typeof p.replace === 'string');
+        const hasAnchor = (typeof p.anchor_before === 'string' && typeof p.anchor_after === 'string' && typeof p.replace_whole === 'string');
+        if (hasFindReplace) {
+          jsonPatches.push({
+            desc: p.desc || '',
+            find: p.find,
+            replace: p.replace,
+            file: p.file || null
+          });
+        } else if (hasAnchor) {
+          jsonPatches.push({
+            desc: p.desc || '',
+            anchor_before: p.anchor_before,
+            anchor_after: p.anchor_after,
+            replace_whole: p.replace_whole,
+            file: p.file || null
+          });
+        }
+      };
+            if (data && Array.isArray(data.patches)) data.patches.forEach(pushPatch);
+      // ✅ 顶层数组必须是补丁数组（每项必须含 find/replace 或 anchor_before/anchor_after/replace_whole 或 variants）
+      //    避免把 AI 回答里其它顶层 JSON 数组（如 [{id:1,name:'x'}]）误识别成补丁
+      else if (Array.isArray(data)) {
+        const isPatchArray = data.length > 0 && data.every(p =>
+          p && typeof p === 'object' && (
+            (typeof p.find === 'string' && typeof p.replace === 'string') ||
+            (typeof p.anchor_before === 'string' && typeof p.anchor_after === 'string' && typeof p.replace_whole === 'string') ||
+            Array.isArray(p.variants)
+          )
+        );
+        if (isPatchArray) data.forEach(pushPatch);
+      }
+    } catch (e) {}
+  });
+
+  result.patches = jsonPatches;
+
+  // ✅ 同一文件内，多条 patch 的 replace 里如果出现相同的 const/let 声明，提前警告
+  const declSeenByFile = {};
+  jsonPatches.forEach((p, idx) => {
+    if (!p.file) return;
+    const effective = p.variants ? (p.variants.find(v => v.id === p.chosenId) || p.variants[0]) : p;
+    const replaceText = (effective.replace || effective.replace_whole || '');
+    const declRe = /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=/g;
+    let m;
+    while ((m = declRe.exec(replaceText)) !== null) {
+      const name = m[1];
+      const key = p.file + '::' + name;
+      if (!declSeenByFile[key]) declSeenByFile[key] = [];
+      declSeenByFile[key].push(idx + 1);
+    }
+  });
+  Object.entries(declSeenByFile).forEach(([key, idxs]) => {
+    if (idxs.length > 1) {
+      const [f, name] = key.split('::');
+      result.warnings.push('⚠️ ' + f + ' 里第 ' + idxs.join('、') + ' 条 patch 都声明了 `' + name + '`，应用后会重复定义（会被写盘前校验拦下）');
+    }
+  });
+
+    if (result.files.length === 1) {
+    result.patches.forEach(p => { if (!p.file) p.file = result.files[0]; });
+  }
+
+  // ✅ 自动补 js/ 前缀：如果 file 不带目录（如 "app.js"），
+  //    但 result.files 里有 "js/app.js"，就自动用后者。
+  //    避免 AI 写 "app.js" 而项目里实际是 "js/app.js" 时反复报「无法读取」。
+  result.patches.forEach(p => {
+    if (!p.file) return;
+    if (p.file.includes('/')) return;
+    const withJs = 'js/' + p.file;
+    if (result.files.includes(withJs)) {
+      p.file = withJs;
+    }
+  });
+
+  if (result.files.length === 0) result.warnings.push('没识别到文件名（如 index.html）');
+  if (result.patches.length === 0) result.warnings.push('没识别到 JSON 补丁（{ "patches": [...] }）');
+
+  return result;
+}
+
+function extractJsonBlocks(text) {
+  const blocks = [];
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '{') {
+      let depth = 0, inStr = false, strChar = '', escaped = false;
+      let start = i, j = i;
+      for (; j < text.length; j++) {
+        const ch = text[j];
+        if (escaped) { escaped = false; continue; }
+        if (inStr) {
+          if (ch === '\\') { escaped = true; continue; }
+          if (ch === strChar) { inStr = false; }
+          continue;
+        }
+        if (ch === '"' || ch === "'" || ch === '`') { inStr = true; strChar = ch; continue; }
+        if (ch === '{') depth++;
+        else if (ch === '}') { depth--; if (depth === 0) break; }
+      }
+      if (depth === 0) {
+        const block = text.slice(start, j + 1);
+        if (block.length > 2) blocks.push(block);
+        i = j + 1;
+        continue;
+      }
+    }
+    i++;
+  }
+  return blocks;
+}
+
+/* ============================================================
+   ③ 解析按钮
+   ============================================================ */
+document.getElementById('btnParse').addEventListener('click', async () => {
+  hideDiff();
+  const raw = document.getElementById('rawInput').value;
+  if (!raw.trim()) { setStatus('❌ 请先粘贴 AI 回答', 'err'); return; }
+  const res = parseAIResponse(raw);
+  parsedPatches = res.patches;
+
+  const resultCard = document.getElementById('resultCard');
+  resultCard.style.display = 'block';
+
+  const filesBox = document.getElementById('recognizedFiles');
+  if (res.files.length === 0) {
+    filesBox.innerHTML = `<div class="status warn">⚠️ 没识别到文件名。请确认 AI 回答中包含 <code>index.html</code> / <code>js/app.js</code> 这样的文件名。</div>`;
+  } else {
+    filesBox.innerHTML = `<div style="font-size:12px;color:#8b949e;margin-bottom:6px;">
+      识别到 <b style="color:#e1e4e8;">${res.files.length}</b> 个文件名：
+    </div>` + res.files.map(f => `<span class="chip">${escHtml(f)}</span>`).join('');
+  }
+
+  const listBox = document.getElementById('patchList');
+  listBox.innerHTML = '';
+  if (res.patches.length === 0) {
+    listBox.innerHTML = `<div class="status err">❌ 没识别到 JSON 补丁。请确认 AI 回答里包含 <code>{ "patches": [ { "find": "...", "replace": "..." } ] }</code> 这样的结构。</div>`;
+    document.getElementById('btnApply').disabled = true;
+    setStatus('❌ 解析完成，但无法应用：' + res.warnings.join('；'), 'err');
+    return;
+  }
+
+
+
+  // ✅ 解析时就把「待指定文件」补成真实路径，用户预览时能看到完整路径
+  if (dirHandle) {
+    for (const p of res.patches) {
+      if (!p.file) continue;
+      try {
+        const r = await resolveFilePath(p.file);
+        if (r && r.path) p.file = r.path;
+      } catch (e) { /* 忽略，留给 btnApply 报错 */ }
+    }
+  }
+
+
+  res.patches.forEach((p, i) => {
+    // 多候选变体
+    if (p.variants && p.variants.length > 0) {
+      const group = document.createElement('div');
+      group.className = 'variant-group';
+      const fileLabel = p.file
+        ? `<span style="color:#7ee787;">→ ${escHtml(p.file)}</span>`
+        : `<span style="color:#d29922;">→ 待指定文件</span>`;
+      const tabsHtml = p.variants.map((v, vi) =>
+        `<div class="variant-tab ${v.id === p.chosenId ? 'active' : ''}" data-vid="${escHtml(v.id)}">
+          <span class="v-id">${escHtml(v.id)}</span>${escHtml(v.desc || '候选' + (vi+1))}
+        </div>`
+      ).join('');
+      const bodiesHtml = p.variants.map(v => {
+        let inner = '';
+        if (v.anchor_before !== undefined) {
+          inner = `
+            <div class="pair">
+              <div style="flex:1;">
+                <div class="lbl">上方锚点（anchor_before）</div>
+                <pre class="old">${escHtml(v.anchor_before)}</pre>
+                <div class="lbl" style="margin-top:6px;">下方锚点（anchor_after）</div>
+                <pre class="old">${escHtml(v.anchor_after)}</pre>
+              </div>
+              <div style="flex:1;">
+                <div class="lbl">替换整体（replace_whole）</div>
+                <pre class="new">${escHtml(v.replace_whole)}</pre>
+              </div>
+            </div>
+          `;
+        } else {
+          inner = `
+            <div class="pair">
+              <div style="flex:1;">
+                <div class="lbl">旧代码（find）</div>
+                <pre class="old">${escHtml(v.find)}</pre>
+              </div>
+              <div style="flex:1;">
+                <div class="lbl">新代码（replace）</div>
+                <pre class="new">${escHtml(v.replace)}</pre>
+              </div>
+            </div>
+          `;
+        }
+        return `<div class="variant-body ${v.id === p.chosenId ? 'active' : ''}" data-vid="${escHtml(v.id)}">${inner}</div>`;
+      }).join('');
+
+      group.innerHTML = `
+        <div class="vg-title">#${i + 1} ${escHtml(p.desc || '（无描述）')} ${fileLabel} <span style="color:#ffa657;font-weight:normal;">[多候选 · 点击标签切换]</span></div>
+        <div class="variant-tabs">${tabsHtml}</div>
+        ${bodiesHtml}
+      `;
+
+      group.querySelectorAll('.variant-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          const vid = tab.dataset.vid;
+          p.chosenId = vid;
+          group.querySelectorAll('.variant-tab').forEach(t => t.classList.toggle('active', t.dataset.vid === vid));
+          group.querySelectorAll('.variant-body').forEach(b => b.classList.toggle('active', b.dataset.vid === vid));
+          setStatus(`🔄 已选择变体 ${vid}：「${(p.variants.find(x => x.id === vid) || {}).desc || ''}」`, 'info');
+        });
+      });
+
+      listBox.appendChild(group);
+      return;
+    }
+
+    // 单方案
+    const div = document.createElement('div');
+    div.className = 'patch-item';
+    const fileLabel = p.file
+      ? `<span style="color:#7ee787;">→ ${escHtml(p.file)}</span>`
+      : `<span style="color:#d29922;">→ 待指定文件</span>`;
+
+    if (p.anchor_before !== undefined) {
+      div.innerHTML = `
+        <div class="desc">#${i + 1} ${escHtml(p.desc || '（无描述）')} ${fileLabel} <span style="color:#ffa657;font-weight:normal;">[锚点补丁]</span></div>
+        <div class="pair">
+          <div style="flex:1;">
+            <div class="lbl">上方锚点（anchor_before）</div>
+            <pre class="old">${escHtml(p.anchor_before)}</pre>
+            <div class="lbl" style="margin-top:6px;">下方锚点（anchor_after）</div>
+            <pre class="old">${escHtml(p.anchor_after)}</pre>
+          </div>
+          <div style="flex:1;">
+            <div class="lbl">替换整体（replace_whole）</div>
+            <pre class="new">${escHtml(p.replace_whole)}</pre>
+          </div>
+        </div>
+      `;
+    } else {
+      div.innerHTML = `
+        <div class="desc">#${i + 1} ${escHtml(p.desc || '（无描述）')} ${fileLabel}</div>
+        <div class="pair">
+          <div style="flex:1;">
+            <div class="lbl">旧代码（find）</div>
+            <pre class="old">${escHtml(p.find)}</pre>
+          </div>
+          <div style="flex:1;">
+            <div class="lbl">新代码（replace）</div>
+            <pre class="new">${escHtml(p.replace)}</pre>
+          </div>
+        </div>
+      `;
+    }
+    listBox.appendChild(div);
+  });
+
+  const btnApply = document.getElementById('btnApply');
+  const applyHint = document.getElementById('applyHint');
+  if (!dirHandle) {
+    btnApply.disabled = true;
+    applyHint.textContent = '请先授权项目文件夹';
+  } else if (res.patches.some(p => !p.file)) {
+    btnApply.disabled = true;
+    applyHint.textContent = '有补丁缺少文件归属，请让 AI 在 JSON 里加 "file" 字段';
+  } else {
+    btnApply.disabled = false;
+    const totalCount = res.patches.reduce((sum, p) => sum + (p.variants ? 1 : 1), 0);
+    applyHint.textContent = `即将对 ${[...new Set(res.patches.map(p => p.file))].length} 个文件应用 ${totalCount} 处修改`;
+  }
+
+  setStatus(`✅ 解析完成：${res.files.length} 个文件，${res.patches.length} 条补丁。` +
+    (res.warnings.length ? '\n⚠️ ' + res.warnings.join('\n⚠️ ') : ''), 'ok');
+});
+
+
+
+
+/* ============================================================
+   路径自动解析器（国际顶流方案）
+   AI 只写文件名（如 "app.js"），工具 BFS 遍历项目目录找到真实路径。
+   - 唯一匹配：直接返回
+   - 多个匹配：返回列表，让用户选
+   - 无匹配：返回 null，调用方给出友好报错
+   ============================================================ */
+async function resolveFilePath(filename) {
+  if (!dirHandle) throw new Error('未授权项目文件夹');
+
+  // 已经带路径（含 /）→ 直接用，不走搜索
+  if (filename.includes('/')) {
+    try {
+      const { fileHandle } = await readFileByPath(filename);
+      return { path: filename, fileHandle, matches: [filename] };
+    } catch (e) {
+      throw new Error(`路径 "${filename}" 读取失败：${e.message}`);
+    }
+  }
+
+  // 不带路径 → BFS 搜索
+  const matches = [];
+  const queue = [['', dirHandle]];  // [相对路径前缀, 目录handle]
+
+  while (queue.length > 0) {
+    const [prefix, dir] = queue.shift();
+    try {
+      for await (const [name, entry] of dir.entries()) {
+        if (entry.kind === 'directory') {
+          // 跳过明显的无关目录（node_modules / .git / tools）
+          if (['node_modules', '.git', 'tools', 'dist', 'build'].includes(name)) continue;
+          queue.push([prefix ? prefix + '/' + name : name, entry]);
+        } else if (name === filename) {
+          matches.push(prefix ? prefix + '/' + name : name);
+        }
+      }
+    } catch (e) { /* 无权限的目录跳过 */ }
+  }
+
+  if (matches.length === 0) {
+    // 没找到 → 列出项目里所有 .js / .html / .css 文件，供用户参考
+    const allFiles = [];
+    const q2 = [['', dirHandle]];
+    while (q2.length > 0) {
+      const [prefix, dir] = q2.shift();
+      try {
+        for await (const [name, entry] of dir.entries()) {
+          if (entry.kind === 'directory') {
+            if (['node_modules', '.git', 'tools', 'dist', 'build'].includes(name)) continue;
+            q2.push([prefix ? prefix + '/' + name : name, entry]);
+          } else if (/\.(js|html|css|json)$/.test(name)) {
+            allFiles.push(prefix ? prefix + '/' + name : name);
+          }
+        }
+      } catch (e) {}
+    }
+    throw new Error(
+      `项目里找不到文件 "${filename}"。\n` +
+      `现有文件（最多 30 个）：\n  ${allFiles.slice(0, 30).join('\n  ')}`
+    );
+  }
+
+  if (matches.length > 1) {
+    throw new Error(
+      `项目里有 ${matches.length} 个叫 "${filename}" 的文件，无法自动确定：\n  ${matches.join('\n  ')}\n` +
+      `请在 patch 里写完整路径（如 "${matches[0]}"）。`
+    );
+  }
+
+  const path = matches[0];
+  const { fileHandle } = await readFileByPath(path);
+  return { path, fileHandle, matches };
+}
+
+
+
+/* ============================================================
+   读取 / 写入
+   ============================================================ */
+function normalizeSafeRelativePath(pathStr) {
+  if (typeof pathStr !== 'string' || !pathStr.trim()) {
+    throw new Error('文件路径不能为空');
+  }
+  const path = pathStr.trim().replace(/\\/g, '/');
+  if (path.startsWith('/') || /^[a-zA-Z]:/.test(path) || path.startsWith('//')) {
+    throw new Error('只允许项目根目录内的相对路径：' + pathStr);
+  }
+  const parts = path.split('/');
+  if (parts.some(part => !part || part === '.' || part === '..')) {
+    throw new Error('路径包含非法目录段，已拒绝访问：' + pathStr);
+  }
+  if (parts.some(part => /[<>:"|?*\x00-\x1f]/.test(part))) {
+    throw new Error('路径包含非法字符：' + pathStr);
+  }
+  return parts.join('/');
+}
+
+async function readFileByPath(pathStr) {
+  pathStr = normalizeSafeRelativePath(pathStr);
+  const parts = pathStr.split('/');
+  let handle = dirHandle;
+  try {
+    for (let i = 0; i < parts.length - 1; i++) {
+      handle = await handle.getDirectoryHandle(parts[i]);
+    }
+  } catch (e) {
+    const list = await listDirFiles(dirHandle);
+    throw new Error(
+      `目录 "${parts.slice(0, -1).join('/')}" 不存在。\n` +
+      `项目根目录下现有文件：\n  ${list.join('\n  ')}`
+    );
+  }
+  const fileName = parts[parts.length - 1];
+  let fileHandle;
+  try {
+    fileHandle = await handle.getFileHandle(fileName);
+  } catch (e) {
+    const list = await listDirFiles(handle);
+    throw new Error(
+      `文件 "${fileName}" 不存在（在目录 "${parts.slice(0, -1).join('/') || '/'}" 下）。\n` +
+      `该目录下现有文件：\n  ${list.join('\n  ') || '（空）'}`
+    );
+  }
+  const file = await fileHandle.getFile();
+  return { text: await file.text(), fileHandle };
+}
+
+async function listDirFiles(dirHandle) {
+  const out = [];
+  try {
+    for await (const [name, entry] of dirHandle.entries()) {
+      out.push(entry.kind === 'directory' ? name + '/' : name);
+    }
+  } catch (e) {}
+  return out.sort();
+}
+async function writeFileByHandle(fileHandle, text) {
+  const writable = await fileHandle.createWritable();
+  await writable.write(text);
+  await writable.close();
+}
+
+/* ============================================================
+   归一化
+   ============================================================ */
+function normalizeFindReplace(s) {
+  // ✅ 不做任何转义还原。
+  // JSON.parse 已经正确处理了 \n \t \" 转义，
+  // 再还原会把代码里【本来就有】的字面量 \n（如 split('\n')）错误变成真换行，
+  // 导致字符串跨行、SyntaxError。
+  // 之前 V4 的 .replace(/\\n/g, '\n') 就是"第2批 _drawTextToDataUrl 被破坏"的罪魁祸首。
+  return typeof s === 'string' ? s : '';
+}
+
+/* ============================================================
+   锚点定位
+   ============================================================ */
+function locateByAnchors(fileText, anchorBefore, anchorAfter) {
+  const squeeze = s => s.replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+  const normText = squeeze(fileText);
+  const normBefore = squeeze(anchorBefore);
+  const normAfter = squeeze(anchorAfter);
+  if (!normBefore || !normAfter) return null;
+
+  const idxBefore = [];
+  let p = 0;
+  while ((p = normText.indexOf(normBefore, p)) !== -1) {
+    idxBefore.push(p);
+    p += normBefore.length;
+  }
+  if (idxBefore.length === 0) return { error: '上方锚点在文件中找不到' };
+  if (idxBefore.length > 1) return { error: `上方锚点在文件中出现 ${idxBefore.length} 次，无法唯一确定` };
+
+  const startNorm = idxBefore[0];
+  const afterSearchStart = startNorm + normBefore.length;
+  const idxAfter = normText.indexOf(normAfter, afterSearchStart);
+  if (idxAfter === -1) return { error: '下方锚点在文件中找不到（或不在上方锚点之后）' };
+
+  let afterCount = 0, q = afterSearchStart;
+  while ((q = normText.indexOf(normAfter, q)) !== -1) { afterCount++; q += normAfter.length; }
+  if (afterCount > 1) return { error: `下方锚点在文件中出现 ${afterCount} 次，无法唯一确定` };
+
+  const endNorm = idxAfter + normAfter.length;
+
+  const mapBack = (normIndex, preferEnd) => {
+    let ni = 0, oi = 0;
+    while (ni < normText.length && oi < fileText.length) {
+      if (ni === normIndex) {
+        if (preferEnd) {
+          while (oi < fileText.length && /\s/.test(fileText[oi])) oi++;
+        }
+        return oi;
+      }
+      const nc = normText[ni];
+      const oc = fileText[oi];
+      if (nc === oc) { ni++; oi++; continue; }
+      if (/\s/.test(oc)) { oi++; continue; }
+      if (nc === ' ' && /\s/.test(oc)) { ni++; oi++; continue; }
+      ni++; oi++;
+    }
+    return preferEnd ? fileText.length : oi;
+  };
+
+  const startOrig = mapBack(startNorm, false);
+  const endOrig = mapBack(endNorm, true);
+
+  return { start: startOrig, end: endOrig };
+}
+
+/* ============================================================
+   应用补丁到一个 working 字符串上
+   ============================================================ */
+function applyOnePatchToString(working, p, idxForReport) {
+  const fail = message => ({
+    ok: false,
+    working,
+    report: `  #${idxForReport} 失败：${message}` + (p.desc ? `（${p.desc}）` : '')
+  });
+
+  if (p.anchor_before !== undefined && p.anchor_after !== undefined && p.replace_whole !== undefined) {
+    const loc = locateByAnchors(working, p.anchor_before, p.anchor_after);
+    if (!loc || loc.error) return fail('锚点定位失败：' + ((loc && loc.error) || '未知'));
+    if (loc.start < 0 || loc.end < loc.start || loc.end > working.length) {
+      return fail('锚点映射位置越界，已拒绝修改');
+    }
+    return {
+      ok: true,
+      working: working.slice(0, loc.start) + p.replace_whole + working.slice(loc.end),
+      report: `  #${idxForReport} 成功（唯一锚点匹配）` + (p.desc ? `（${p.desc}）` : '')
+    };
+  }
+
+  if (typeof p.find !== 'string' || typeof p.replace !== 'string' || !p.find.length) {
+    return fail('补丁字段不完整，find 和 replace 必须是非空字符串');
+  }
+
+  let source = working;
+  let find = p.find;
+  let occ = countOccurrences(source, find);
+
+  // 只允许换行符差异，不修改补丁对象本身。
+  if (occ === 0 && source.includes('\r\n')) {
+    const altSource = source.replace(/\r\n/g, '\n');
+    const altFind = find.replace(/\r\n/g, '\n');
+    const altOcc = countOccurrences(altSource, altFind);
+    if (altOcc > 0) {
+      source = altSource;
+      find = altFind;
+      occ = altOcc;
+    }
+  }
+
+  if (occ === 0) {
+    const firstLine = find.split('\n')[0].slice(0, 80);
+    return fail(`找不到旧代码；find 共 ${find.length} 字符，首行「${firstLine}…」`);
+  }
+  if (occ !== 1) {
+    return fail(`旧代码不唯一：出现 ${occ} 次。为防止误改，必须提供更长的 find 或使用唯一锚点`);
+  }
+
+  const index = source.indexOf(find);
+  return {
+    ok: true,
+    working: source.slice(0, index) + p.replace + source.slice(index + find.length),
+    report: `  #${idxForReport} 成功（唯一匹配）` + (p.desc ? `（${p.desc}）` : '')
+  };
+}
+
+/* ============================================================
+   写盘前校验引擎 V5
+   分层：语法校验 / 可选 AST 校验 / 样式基础校验
+   不再用正则猜测 JS 变量作用域。
+   ============================================================ */
+const PatchValidator = {
+  version: '5.0.0',
+  parser: null,
+  registerParser(parser) {
+    if (!parser || typeof parser.parse !== 'function') {
+      throw new TypeError('解析器必须提供 parse(source, options) 方法');
+    }
+    this.parser = parser;
+  },
+  getParser() {
+    if (this.parser) return this.parser;
+    if (window.acorn && typeof window.acorn.parse === 'function') return window.acorn;
+    return null;
+  }
+};
+
+function validateWorkingText(fname, text) {
+  const issues = [];
+  const ext = String(fname).split('.').pop().toLowerCase();
+
+  // 1. JavaScript：使用真正的语言解析器判断语法和词法作用域。
+  // 原生 new Function 会识别同一作用域中的重复声明，
+  // 不会把不同函数中的同名局部变量误判为冲突。
+  if (ext === 'js') {
+    const parser = PatchValidator.getParser();
+    if (parser) {
+      try {
+        parser.parse(text, {
+          ecmaVersion: 'latest',
+          sourceType: 'script',
+          allowHashBang: true
+        });
+      } catch (e) {
+        issues.push('❌ JS AST 语法错误：' + (e.message || String(e)));
+      }
+    } else {
+      try {
+        new Function(text);
+      } catch (e) {
+        if (e && e.name === 'EvalError') {
+          issues.push('❌ 当前浏览器安全策略禁止原生语法解析，无法安全验证 JS；文件未写入。');
+        } else {
+          issues.push('❌ JS 语法错误：' + (e.message || String(e)));
+        }
+      }
+    }
+  }
+
+  // 2. CSS：忽略字符串和注释后检查括号结构，避免把字符串里的括号算进去。
+  if (ext === 'css') {
+    let depth = 0;
+    let quote = '';
+    let escaped = false;
+    let comment = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i], next = text[i + 1];
+      if (comment) {
+        if (c === '*' && next === '/') { comment = false; i++; }
+        continue;
+      }
+      if (quote) {
+        if (escaped) { escaped = false; continue; }
+        if (c === '\\') { escaped = true; continue; }
+        if (c === quote) quote = '';
+        continue;
+      }
+      if (c === '/' && next === '*') { comment = true; i++; continue; }
+      if (c === '"' || c === "'") { quote = c; continue; }
+      if (c === '{') depth++;
+      if (c === '}') {
+        depth--;
+        if (depth < 0) {
+          issues.push('❌ CSS 出现多余的右大括号 }');
+          break;
+        }
+      }
+    }
+    if (quote) issues.push('❌ CSS 字符串没有闭合');
+    if (comment) issues.push('❌ CSS 注释没有闭合');
+    if (depth > 0) issues.push('❌ CSS 缺少 ' + depth + ' 个右大括号 }');
+  }
+
+  return issues;
+}
+
+/* ============================================================
+   事务式补丁执行引擎 V5
+   阶段：准备 → 预检 → 磁盘冲突检测 → 提交 → 失败恢复
+   ============================================================ */
+let patchApplyBusy = false;
+
+async function commitPatchTransaction(plans) {
+  // 写入前再次读取所有文件，避免覆盖预检期间发生的外部修改。
+  for (const plan of plans) {
+    const latest = await readFileByPath(plan.fname);
+    if (latest.text !== plan.original) {
+      throw new Error(`文件在预检后发生变化：${plan.fname}。请重新导出文件并生成补丁。`);
+    }
+  }
+
+  const attempted = [];
+  try {
+    for (const plan of plans) {
+      attempted.push(plan);
+      await writeFileByHandle(plan.fileHandle, plan.working);
+      const verify = await readFileByPath(plan.fname);
+      if (verify.text !== plan.working) {
+        throw new Error(`写入后校验不一致：${plan.fname}`);
+      }
+    }
+    return { ok: true, attempted: attempted.length };
+  } catch (error) {
+    const rollbackErrors = [];
+    for (const plan of attempted.slice().reverse()) {
+      try {
+        await writeFileByHandle(plan.fileHandle, plan.original);
+        const verify = await readFileByPath(plan.fname);
+        if (verify.text !== plan.original) {
+          throw new Error('恢复后内容校验不一致');
+        }
+      } catch (restoreError) {
+        rollbackErrors.push(plan.fname + '：' + restoreError.message);
+      }
+    }
+    const detail = rollbackErrors.length
+      ? '\n⚠️ 自动恢复未能全部完成，请立即检查：\n' + rollbackErrors.join('\n')
+      : '\n✅ 已自动恢复本次事务中已尝试写入的文件。';
+    throw new Error((error.message || String(error)) + detail);
+  }
+}
+
+/* ============================================================
+   应用并保存
+   ============================================================ */
+document.getElementById('btnApply').addEventListener('click', async () => {
+  const btn = document.getElementById('btnApply');
+  if (patchApplyBusy) return;
+  if (!dirHandle) { setStatus('❌ 请先授权项目文件夹', 'err'); return; }
+  if (!parsedPatches.length) { setStatus('❌ 没有可应用的补丁', 'err'); return; }
+
+  patchApplyBusy = true;
+  btn.disabled = true;
+  const report = [];
+
+  try {
+    setStatus('🔍 正在准备补丁并解析文件路径…', 'info');
+
+    // 克隆补丁，绝不在执行过程中修改用户的原始解析结果。
+    const effectivePatches = parsedPatches.map(p => {
+      const copy = Object.assign({}, p);
+      if (Array.isArray(p.variants)) {
+        copy.variants = p.variants.map(v => Object.assign({}, v));
+        const chosen = copy.variants.find(v => v.id === copy.chosenId) || copy.variants[0];
+        Object.assign(copy, chosen, {
+          file: p.file,
+          desc: (p.desc || '') + (chosen.desc ? ' → ' + chosen.desc : ''),
+          __variantId: chosen.id
+        });
+      }
+      for (const key of ['find', 'replace', 'anchor_before', 'anchor_after', 'replace_whole']) {
+        if (typeof copy[key] === 'string') copy[key] = normalizeFindReplace(copy[key]);
+      }
+      return copy;
+    });
+
+    // 路径解析。
+    const resolvedFiles = {};
+    for (const p of effectivePatches) {
+      if (!p.file) throw new Error('存在没有 file 字段的补丁，请补充文件路径。');
+      const requested = String(p.file).replace(/\\/g, '/');
+      if (!resolvedFiles[requested]) {
+        const result = await resolveFilePath(requested);
+        resolvedFiles[requested] = normalizeSafeRelativePath(result.path);
+      }
+      p.file = resolvedFiles[requested];
+    }
+
+    // 按文件分组。
+    const byFile = {};
+    for (const p of effectivePatches) {
+      if (!byFile[p.file]) byFile[p.file] = [];
+      byFile[p.file].push(p);
+    }
+    const fileNames = Object.keys(byFile);
+    if (!fileNames.length) throw new Error('没有可执行的文件补丁。');
+
+    // 第一阶段：所有文件只在内存中修改，绝不写盘。
+    const plans = [];
+    let totalApplied = 0;
+    for (const fname of fileNames) {
+      setStatus('🧪 正在预检：' + fname, 'info');
+      const fileData = await readFileByPath(fname);
+      const original = fileData.text;
+      let working = original;
+      const fileReport = [];
+      let applied = 0;
+      let failed = 0;
+
+      for (let i = 0; i < byFile[fname].length; i++) {
+        const result = applyOnePatchToString(working, byFile[fname][i], i + 1);
+        fileReport.push(result.report);
+        if (result.ok) {
+          working = result.working;
+          applied++;
+        } else {
+          failed++;
+        }
+      }
+
+      if (failed || !applied) {
+        report.push(`❌ ${fname}：预检失败，${applied} 条成功，${failed} 条失败。\n${fileReport.join('\n')}`);
+        throw new Error('补丁预检失败。为避免部分修改，所有文件均未写入。\n' + report.join('\n\n'));
+      }
+
+      const issues = validateWorkingText(fname, working);
+      if (issues.length) {
+        report.push(`🚫 ${fname}：文件验证失败。\n${issues.join('\n')}\n${fileReport.join('\n')}`);
+        throw new Error('文件验证失败。所有文件均未写入。\n' + report.join('\n\n'));
+      }
+
+      plans.push({ fname, fileHandle: fileData.fileHandle, original, working, applied, fileReport });
+      totalApplied += applied;
+    }
+
+    // 第二阶段：完整预检成功，才允许进入提交阶段。
+    setStatus(`✅ 全部预检通过：${plans.length} 个文件，${totalApplied} 处修改。正在检查磁盘版本…`, 'info');
+    const commit = await commitPatchTransaction(plans);
+    if (!commit.ok) throw new Error('事务提交失败。');
+
+    // 第三阶段：全部提交成功，才生成一个历史节点。
+    const globalBefore = {};
+    const appliedFiles = [];
+    const fileSummaries = {};
+    for (const plan of plans) {
+      globalBefore[plan.fname] = plan.original;
+      appliedFiles.push(plan.fname);
+      fileSummaries[plan.fname] = plan.applied;
+      report.push(`✅ ${plan.fname}：应用 ${plan.applied} 处\n${plan.fileReport.join('\n')}`);
+    }
+
+    const autoSummary = appliedFiles.map(f => `${f} ${fileSummaries[f]}处`).join('、');
+    let note = '';
+    try { note = await askNote(autoSummary, appliedFiles); }
+    catch (e) { note = ''; }
+
+    const now = new Date();
+    const timeStr = String(now.getHours()).padStart(2, '0') + ':' +
+      String(now.getMinutes()).padStart(2, '0') + ':' +
+      String(now.getSeconds()).padStart(2, '0');
+
+    timeline.unshift({
+      id: 'tl-' + now.getTime(),
+      time: timeStr,
+      timestamp: now.getTime(),
+      autoSummary,
+      note,
+      files: appliedFiles.slice(),
+      before: globalBefore
+    });
+    saveTimeline();
+
+    setStatus(`✅ 事务提交成功：${plans.length} 个文件，${totalApplied} 处修改。\n\n` + report.join('\n\n'), 'ok');
+    try {
+      const first = plans[0];
+      showLineDiff(first.original, first.working);
+    } catch (e) {}
+
+  } catch (e) {
+    setStatus('❌ 本次补丁未能完整执行：\n' + (e.message || String(e)), 'err');
+  } finally {
+    patchApplyBusy = false;
+    btn.disabled = parsedPatches.length === 0 || !dirHandle;
+  }
+});
+
+/* ============================================================
+   应用后询问备注
+   ============================================================ */
+function askNote(autoSummary, files) {
+  return new Promise(resolve => {
+    const mask = document.createElement('div');
+    mask.className = 'modal-mask';
+    mask.innerHTML = `
+      <div class="modal-box">
+        <h3>✅ 应用成功！给这次改动写个备注</h3>
+        <div class="meta">
+          <b>自动摘要：</b>${escHtml(autoSummary)}<br>
+          <b>涉及文件：</b>${escHtml(files.join('、'))}
+        </div>
+        <label class="fld">备注（可留空，之后随时能在时间线里补写）</label>
+        <textarea id="noteInput" placeholder="例如：删掉上移下移按钮，加了建组按钮"></textarea>
+        <div class="modal-actions">
+          <button class="ghost" id="noteSkip">跳过</button>
+          <button class="primary" id="noteOk">保存备注</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(mask);
+    const ta = mask.querySelector('#noteInput');
+    setTimeout(() => ta.focus(), 60);
+
+    const finish = (val) => { mask.remove(); resolve(val); };
+    mask.querySelector('#noteSkip').addEventListener('click', () => finish(''));
+    mask.querySelector('#noteOk').addEventListener('click', () => finish(ta.value.trim()));
+    mask.addEventListener('click', (e) => { if (e.target === mask) finish(''); });
+
+    ta.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        finish(ta.value.trim());
+      }
+    });
+  });
+}
+
+/* ============================================================
+   清空
+   ============================================================ */
+document.getElementById('btnClear').addEventListener('click', () => {
+  document.getElementById('rawInput').value = '';
+  document.getElementById('resultCard').style.display = 'none';
+  hideDiff();
+  setStatus('已清空。', 'info');
+  parsedPatches = [];
+});
+
+/* ============================================================
+   启动
+   ============================================================ */
+loadTimeline();
+</script>
+</body>
+</html>
