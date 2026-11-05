@@ -549,43 +549,92 @@ function openNoteModal(idx) {
 /* ============================================================
    回滚到节点执行前
    ============================================================ */
-async function rollbackToNode(idx) {
+   async function rollbackToNode(idx) {
   const node = timeline[idx];
   if (!node) return;
   if (!dirHandle) { setStatus('❌ 请先授权项目文件夹再回滚', 'err'); return; }
+  if (patchApplyBusy) {
+    setStatus('⚠️ 当前有文件事务正在执行，请稍后再恢复历史版本。', 'warn');
+    return;
+  }
   if (!node.before || Object.keys(node.before).length === 0) {
     setStatus('❌ 这个节点没有保存文件快照，无法回滚。', 'err');
     return;
   }
-  const fileList = Object.keys(node.before).join('\n  ');
+
+  const fnames = Object.keys(node.before);
+  if (!fnames.every(fname => typeof node.before[fname] === 'string')) {
+    setStatus('❌ 历史快照数据不完整或格式错误，已拒绝恢复。', 'err');
+    return;
+  }
+
+  const fileList = fnames.join('\n  ');
   const ok = confirm(
     `确定要回到 ${node.time} 这个版本吗？\n\n` +
-    `会把以下文件恢复成该节点执行前的状态：\n  ${fileList}\n\n` +
-    `历史节点会保留，你随时可以再回到后面的版本。`
+    `将恢复以下文件：\n  ${fileList}\n\n` +
+    `恢复前会读取当前文件作为安全快照。全部文件准备成功后才会提交；` +
+    `如果提交失败，将尝试恢复本次操作前的内容。\n\n` +
+    `恢复成功后，也会新增一个恢复前快照，方便再次返回。`
   );
   if (!ok) return;
 
-  const report = [];
-  let restored = 0;
-  let failed = 0;
-  for (const fname of Object.keys(node.before)) {
-    try {
-      const { fileHandle } = await readFileByPath(fname);
-      await writeFileByHandle(fileHandle, node.before[fname]);
-      restored++;
-      report.push(`✅ ${fname}`);
-    } catch (e) {
-      failed++;
-      report.push(`❌ ${fname}：${e.message}`);
+  patchApplyBusy = true;
+  try {
+    setStatus('🔍 正在读取当前文件并准备历史恢复事务…', 'info');
+    const plans = [];
+
+    // 全部文件先读取到内存，任何文件读取失败都不会开始写盘。
+    for (const fname of fnames) {
+      const current = await readFileByPath(fname);
+      plans.push({
+        fname,
+        fileHandle: current.fileHandle,
+        original: current.text,
+        working: node.before[fname],
+        applied: 1,
+        fileReport: ['历史版本快照恢复']
+      });
     }
+
+    // 复用补丁应用使用的事务引擎：提交前复核、写入后验证、失败反向恢复。
+    setStatus(`🧪 ${plans.length} 个文件已准备，正在提交历史恢复事务…`, 'info');
+    await commitPatchTransaction(plans);
+
+    // 恢复成功后保存恢复前的内容，形成一个可再次返回的时间线节点。
+    const now = new Date();
+    const beforeRollback = {};
+    for (const plan of plans) {
+      beforeRollback[plan.fname] = plan.original;
+    }
+    timeline.unshift({
+      id: 'tl-restore-' + now.getTime(),
+      time: String(now.getHours()).padStart(2, '0') + ':' +
+        String(now.getMinutes()).padStart(2, '0') + ':' +
+        String(now.getSeconds()).padStart(2, '0'),
+      timestamp: now.getTime(),
+      autoSummary: '恢复前快照（' + plans.length + ' 个文件）',
+      note: '由历史版本恢复自动生成，可用于返回恢复前状态',
+      files: fnames.slice(),
+      before: beforeRollback
+    });
+    saveTimeline();
+
+    setStatus(
+      `✅ 已成功恢复到历史节点 ${node.time}。\n` +
+      `共恢复 ${plans.length} 个文件。\n` +
+      `恢复前快照已加入时间线，可再次返回。\n\n` +
+      fnames.map(fname => '✅ ' + fname).join('\n'),
+      'ok'
+    );
+    hideDiff();
+  } catch (e) {
+    setStatus(
+      '❌ 历史版本恢复事务失败：\n' + (e.message || String(e)),
+      'err'
+    );
+  } finally {
+    patchApplyBusy = false;
   }
-  setStatus(
-    (failed === 0 ? '✅ ' : '⚠️ ') +
-    `已回滚到 ${node.time} 之前：成功 ${restored} 个文件，失败 ${failed} 个。\n\n` +
-    report.join('\n'),
-    failed === 0 ? 'ok' : 'warn'
-  );
-  hideDiff();
 }
 
 /* ============================================================
